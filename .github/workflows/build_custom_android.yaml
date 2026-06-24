@@ -1,42 +1,38 @@
-*** Begin Patch
-*** Add File: .github/workflows/build_custom_android.yaml
-+name: Build custom Cromite Android (AO3 home + DoH)
-+
-+on:
-+  workflow_dispatch:
-+    inputs:
-+      target:
-+        description: 'android arch [arm/arm64/x64/all]'
-+        required: true
-+        default: 'arm64'
-+
-+jobs:
-+  build:
-+    runs-on: ubuntu-latest
-+    steps:
-+      - name: Checkout
-+        uses: actions/checkout@v3
-+        with:
-+          ref: custom/ao3-home-doh-android
-+
-+      - name: Add lock prefs files
-+        run: |
-+          echo "Files added in branch for AO3 homepage and DoH are already present."
-+
-+      - name: Prepare simple Android build (placeholder)
-+        run: |
-+          echo "This workflow is a lightweight placeholder. Full Chromium build requires large images and custom runners."
-+
-+      - name: Package dummy APK
-+        run: |
-+          mkdir -p out
-+          echo "placeholder for Cromite (AO3 home + DoH)" > out/README.txt
-+          zip -r out/CustomCromite-unsigned.zip out/README.txt
-+
-+      - name: Upload artifact
-+        uses: actions/upload-artifact@v3
-+        with:
-+          name: custom-cromite-android-placeholder
-+          path: out/CustomCromite-unsigned.zip
-+
-*** End Patch
+name: Build custom Cromite Android (AO3 home + DoH)
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'android arch [arm/arm64/x64/all]'
+        required: true
+        default: 'arm64'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          ref: custom/ao3-home-doh-android
+
+      - name: Add lock prefs files
+        run: |
+          echo "Files added in branch for AO3 homepage and DoH are already present."
+
+      - name: Prepare simple Android build (placeholder)
+        run: |
+          echo "This workflow is a lightweight placeholder. Full Chromium build requires large images and custom runners."
+
+      - name: Package dummy APK
+        run: |
+          mkdir -p out
+          echo "placeholder for Cromite (AO3 home + DoH)" > out/README.txt
+          zip -r out/CustomCromite-unsigned.zip out/README.txt
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: custom-cromite-android-placeholder
+          path: out/CustomCromite-unsigned.zip
