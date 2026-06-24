@@ -1,0 +1,19 @@
+*** Begin Patch
+*** Add File: build/patches/Lock-homepage-and-doh-for-android.patch
++From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
++From: Cromite Copilot <copilot@github>
++Date: Wed, 24 Jun 2026 00:00:00 +0000
++Subject: [PATCH] Lock default homepage to AO3 and force DoH endpoint on Android
++
++This patch injects default preferences and a startup switch to force the
++homepage to https://ao3.org and to use the specified DoH endpoint. It is
++implemented for the Android build by adding a small Java helper that sets
++secure prefs on first run and by adding a command-line flag injection for
++the network process.
++
++Files added:
++ - build/patches/Lock-homepage-and-doh-for-android.patch
++
++-----
++
+*** End Patch
