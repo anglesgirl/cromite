@@ -1,6 +1,9 @@
 name: Build custom Cromite Android (AO3 home + DoH)
 
 on:
+  push:
+    branches:
+      - custom/ao3-home-doh-android
   workflow_dispatch:
     inputs:
       target:
@@ -17,6 +20,13 @@ jobs:
         with:
           ref: custom/ao3-home-doh-android
 
+      - name: Show environment
+        run: |
+          echo "Branch: $GITHUB_REF"
+          uname -a
+          lsb_release -a || true
+          df -h || true
+
       - name: Add lock prefs files
         run: |
           echo "Files added in branch for AO3 homepage and DoH are already present."
@@ -29,7 +39,15 @@ jobs:
         run: |
           mkdir -p out
           echo "placeholder for Cromite (AO3 home + DoH)" > out/README.txt
-          zip -r out/CustomCromite-unsigned.zip out/README.txt
+          if command -v zip >/dev/null 2>&1; then
+            zip -r out/CustomCromite-unsigned.zip out/README.txt
+          else
+            apt-get update && apt-get install -y zip && zip -r out/CustomCromite-unsigned.zip out/README.txt
+          fi
+
+      - name: List output files
+        run: |
+          ls -la out || true
 
       - name: Upload artifact
         uses: actions/upload-artifact@v3
