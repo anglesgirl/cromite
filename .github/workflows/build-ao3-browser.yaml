@@ -3,8 +3,8 @@ name: Build AO3 Browser (arm64)
 on:
   workflow_dispatch:
     inputs:
-      debug:
-        description: 'debug build? [true/false]'
+      force_build_images:
+        description: 'Force build images from scratch? [true/false]'
         required: false
         default: 'false'
 
@@ -13,12 +13,13 @@ env:
   USELOCALIMAGE: true
 
 jobs:
-  build_arm64:
+  build:
     name: Build Android arm64 APK
     runs-on: ubuntu-22.04
-    timeout-minutes: 720
+    timeout-minutes: 360
+
     steps:
-      - name: Checkout cromite fork
+      - name: Checkout repo
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
@@ -32,23 +33,19 @@ jobs:
             /usr/local/x86_64-linux-gnu /usr/local/gcc \
             /usr/local/llvm-* /usr/share/swift /usr/share/miniconda \
             /usr/share/az_* /usr/local/share/powershell
+          sudo apt-get clean
           df -h
 
-      - name: Get chromium version
-        id: version
+      - name: Get version and upstream SHA
+        id: info
         shell: bash
         run: |
-          VERSION=$(cat ./build/RELEASE)
+          VERSION=$(cat build/RELEASE)
+          UPSTREAM_SHA=$(git ls-remote https://github.com/uazo/cromite HEAD | cut -f1)
           echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Chromium version: $VERSION"
-
-      - name: Setup build environment
-        shell: bash
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq \
-            build-essential git python3 curl wget lsb-release \
-            libglib2.0-dev libnss3-dev pkg-config
+          echo "upstream_sha=$UPSTREAM_SHA" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+          echo "Upstream SHA: $UPSTREAM_SHA"
 
       - name: Download regctl
         shell: bash
@@ -57,67 +54,142 @@ jobs:
           chmod 755 regctl
           sudo mv regctl /usr/local/bin/
 
-      - name: Pull build docker image
+      - name: Try pull prebuilt cromite-build image
+        id: pull
         shell: bash
         run: |
-          VERSION=${{ steps.version.outputs.version }}
-          IMAGE="uazo/cromite-build:$VERSION"
-          echo "Pulling $IMAGE"
-          docker pull "$IMAGE" || echo "Image not found, will use latest"
-          docker tag "$IMAGE" cromite-build:latest 2>/dev/null || true
+          VERSION=${{ steps.info.outputs.version }}
+          SHA=${{ steps.info.outputs.upstream_sha }}
+          TAG="$VERSION-$SHA"
+          echo "Trying uazo/cromite-build:$TAG"
+          if docker pull "uazo/cromite-build:$TAG" 2>/dev/null; then
+            docker tag "uazo/cromite-build:$TAG" uazo/cromite-build:build
+            echo "found=true" >> $GITHUB_OUTPUT
+            echo "Pull success!"
+          else
+            echo "found=false" >> $GITHUB_OUTPUT
+            echo "Pull failed, will build from scratch"
+          fi
 
-      - name: Apply AO3 Browser patches
+      - name: Build build-deps image
+        if: steps.pull.outputs.found != 'true'
         shell: bash
         run: |
-          # 补丁在仓库根目录 ao3-browser/ 中
-          # 在 docker 容器内应用补丁到 chromium 源码树
+          VERSION=${{ steps.info.outputs.version }}
+          DOCKER_BUILDKIT=1 docker build -t uazo/build-deps:$VERSION \
+            --progress plain \
+            --build-arg VERSION=$VERSION \
+            --no-cache \
+            tools/images/build-deps/.
+
+      - name: Build chromium source image
+        if: steps.pull.outputs.found != 'true'
+        shell: bash
+        run: |
+          VERSION=${{ steps.info.outputs.version }}
+          DOCKER_BUILDKIT=1 docker build -t uazo/chromium:$VERSION \
+            --progress plain \
+            --build-arg VERSION=$VERSION \
+            --no-cache \
+            tools/images/chr-source/.
+
+      - name: Build cromite-source image
+        if: steps.pull.outputs.found != 'true'
+        shell: bash
+        run: |
+          VERSION=${{ steps.info.outputs.version }}
+          SHA=${{ steps.info.outputs.upstream_sha }}
+          DOCKER_BUILDKIT=1 docker build -t uazo/cromite:$VERSION-$SHA \
+            --progress plain \
+            --build-arg CROMITE_SHA=$SHA \
+            --build-arg VERSION=$VERSION \
+            --no-cache \
+            tools/images/cromite-source/.
+
+      - name: Build cromite-build image
+        if: steps.pull.outputs.found != 'true'
+        shell: bash
+        run: |
+          VERSION=${{ steps.info.outputs.version }}
+          SHA=${{ steps.info.outputs.upstream_sha }}
+          DOCKER_BUILDKIT=1 docker build -t uazo/cromite-build:$VERSION-$SHA \
+            --progress plain \
+            --build-arg CROMITE_SHA=$SHA \
+            --build-arg VERSION=$VERSION \
+            --no-cache \
+            tools/images/cromite-build/.
+          docker tag uazo/cromite-build:$VERSION-$SHA uazo/cromite-build:build
+
+      - name: Verify image exists
+        shell: bash
+        run: |
+          docker images | grep cromite
+          docker inspect uazo/cromite-build:build > /dev/null && echo "Image OK" || { echo "Image missing!"; exit 1; }
+
+      - name: Apply AO3 patches and build arm64 APK
+        shell: bash
+        run: |
+          mkdir -p $HOME/build-output
           docker run --rm \
-            -v "$(pwd)/ao3-browser:/ao3-browser" \
-            -v "$HOME/chromium:/home/lg/working_dir" \
-            -e "WORKSPACE=/home/lg/working_dir" \
-            cromite-build:latest \
+            -v "$(pwd)/ao3-browser:/ao3-browser:ro" \
+            -v "$HOME/build-output:/home/lg/working_dir/chromium/src/out" \
+            -e WORKSPACE=/home/lg/working_dir \
+            -e HOME=/home/lg/working_dir \
+            -e TARGET_ISDEBUG=false \
+            uazo/cromite-build:build \
             bash -c '
-              cd /home/lg/working_dir/chromium/src
-              bash /ao3-browser/apply-ao3-patches.sh
+              set -ex
+              export PATH=$WORKSPACE/chromium/src/third_party/llvm-build/Release+Asserts/bin:$WORKSPACE/depot_tools/:/usr/local/go/bin:$WORKSPACE/mtool/bin:$PATH
+              cd $WORKSPACE/chromium/src
+
+              echo "========== Applying AO3 patches =========="
+              for f in /ao3-browser/patches/*.patch; do
+                echo " -> Applying $(basename $f)"
+                cat "$f" | git am --no-verify || {
+                  echo "git am failed, trying patch -p1..."
+                  cd $WORKSPACE/chromium/src && patch -p1 < "$f"
+                }
+              done
+
+              echo "========== Copying extension files =========="
+              EXT_DIR=chrome/browser/extensions/default_extensions/ao3-translator
+              mkdir -p "$EXT_DIR/assets"
+              cp /ao3-browser/extension/manifest.json "$EXT_DIR/"
+              cp /ao3-browser/extension/background.js "$EXT_DIR/"
+              cp /ao3-browser/extension/gm-polyfill.js "$EXT_DIR/"
+              cp /ao3-browser/extension/zh-cn.js "$EXT_DIR/"
+              cp /ao3-browser/extension/ao3-chinese.user.js "$EXT_DIR/"
+              cp /ao3-browser/extension/assets/* "$EXT_DIR/assets/"
+
+              echo "========== Building arm64 =========="
+              mkdir -p out/arm64
+
+              gn gen --args="target_os = \"android\" $(cat $WORKSPACE/cromite/build/cromite.gn_args) target_cpu = \"arm64\"" out/arm64
+
+              vpython3 $WORKSPACE/depot_tools/siso.py ninja -C out/arm64 chrome_public_apk --offline || \
+              vpython3 $WORKSPACE/depot_tools/siso.py ninja -C out/arm64 chrome_public_apk
+
+              echo "========== Build complete =========="
+              ls -la out/arm64/apks/
             '
-
-      - name: Build arm64 APK
-        shell: bash
-        run: |
-          DEBUG="${{ github.event.inputs.debug }}"
-          docker run --rm \
-            -v "$HOME/chromium:/home/lg/working_dir" \
-            -e "WORKSPACE=/home/lg/working_dir" \
-            -e "TARGET_ISDEBUG=$DEBUG" \
-            cromite-build:latest \
-            bash -c "
-              export PATH=\$WORKSPACE/chromium/src/third_party/llvm-build/Release+Asserts/bin:\$WORKSPACE/depot_tools/:\$PATH
-              export HOME=/home/lg/working_dir
-              cd \$HOME/chromium/src
-
-              gn gen out/Release --args='target_os=\"android\" target_cpu=\"arm64\" is_official_build=true is_debug=false chrome_pgo_phase=0 is_high_end_android=true'
-
-              autoninja -C out/Release chrome_public_apk
-            "
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: ao3-browser-arm64-apk
-          path: ${{ env.HOME }}/chromium/src/out/Release/apks/*.apk
+          path: ${{ env.HOME }}/build-output/arm64/apks/*.apk
           retention-days: 30
 
       - name: Create release
-        if: github.ref == 'refs/heads/ao3-browser'
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ao3-browser-${{ steps.version.outputs.version }}
-          files: ${{ env.HOME }}/chromium/src/out/Release/apks/*.apk
-          name: AO3 Browser ${{ steps.version.outputs.version }}
+          tag_name: ao3-browser-${{ steps.info.outputs.version }}
+          files: ${{ env.HOME }}/build-output/arm64/apks/*.apk
+          name: AO3 Browser ${{ steps.info.outputs.version }}
           body: |
             AO3 Browser 测试版
 
-            基于 Cromite + Chromium ${{ steps.version.outputs.version }}
+            基于 Cromite + Chromium ${{ steps.info.outputs.version }}
 
             功能:
             - 内置 Cloudflare Zero Trust DoH (绕过 DNS 封锁)
