@@ -1,0 +1,81 @@
+{
+  "manifest_version": 3,
+  "name": "AO3 Translator",
+  "version": "1.9.0",
+  "description": "为 AO3 打造的中文阅读体验增强工具，支持 UI 界面汉化与多种翻译服务的实时内容翻译。",
+  "author": "V-Lipset",
+  "icons": {
+    "48": "assets/icon.png",
+    "128": "assets/icon.png"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://archiveofourown.org/*",
+        "*://archiveofourown.gay/*",
+        "*://neversleep.top/*",
+        "*://jdkg.org/*",
+        "*://bk3.jdkg.org/*",
+        "*://archiveofourown.site/*",
+        "*://ao3mirror.site/*",
+        "*://ao1s.top/*",
+        "*://ao3l.site/*",
+        "*://i.aois.top/*",
+        "*://xn--iao3-lw4b.ws/*",
+        "*://ao3sg.hyf9588.tech/*",
+        "*://ao3rc.hyf9588.tech/*"
+      ],
+      "js": [
+        "gm-polyfill.js",
+        "zh-cn.js",
+        "ao3-chinese.user.js"
+      ],
+      "run_at": "document_start",
+      "all_frames": false
+    }
+  ],
+  "host_permissions": [
+    "*://archiveofourown.org/*",
+    "*://archiveofourown.gay/*",
+    "*://*.archiveofourown.org/*",
+    "*://github.com/*",
+    "*://raw.githubusercontent.com/*",
+    "*://cdn.jsdelivr.net/*",
+    "*://translate.googleapis.com/*",
+    "*://translate-pa.googleapis.com/*",
+    "*://edge.microsoft.com/*",
+    "*://api-edge.cognitive.microsofttranslator.com/*",
+    "*://api.anthropic.com/*",
+    "*://api.cerebras.ai/*",
+    "*://api.deepseek.com/*",
+    "*://generativelanguage.googleapis.com/*",
+    "*://api.groq.com/*",
+    "*://api-inference.modelscope.cn/*",
+    "*://api.openai.com/*",
+    "*://api.siliconflow.cn/*",
+    "*://api.together.xyz/*",
+    "*://open.bigmodel.cn/*",
+    "*://fanyi.baidu.com/*",
+    "*://transmart.qq.com/*",
+    "*://cdnjs.cloudflare.com/*"
+  ],
+  "permissions": [
+    "storage",
+    "downloads",
+    "notifications"
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "assets/icon.png",
+        "assets/santa hat.png"
+      ],
+      "matches": [
+        "*://*/*"
+      ]
+    }
+  ]
+}
