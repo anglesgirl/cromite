@@ -1,0 +1,76 @@
+From: ao3-browser <ao3@example.com>
+Date: Sat, 28 Jun 2026 00:00:00 +0000
+Subject: Add AO3 as default search engine
+
+Replaces the default search engine with AO3 site search so that typing
+in the omnibox searches archiveofourown.org directly.
+
+License: GPL-3.0-only - https://spdx.org/licenses/GPL-3.0-only.html
+---
+ .../search_engines/cromite/BUILD.gn                    |  2 +-
+ .../cromite/cromite_prepopulated_engines.json          | 27 +++++++++++++++++++
+ .../search_engines/template_url_prepopulate_data.cc    | 13 ++++++---
+ .../search_engines/search_engine_type.h                |  3 +++
+ 4 files changed, 41 insertions(+), 4 deletions(-)
+
+diff --git a/components/search_engines/cromite/cromite_prepopulated_engines.json b/components/search_engines/cromite/cromite_prepopulated_engines.json
+--- a/components/search_engines/cromite/cromite_prepopulated_engines.json
++++ b/components/search_engines/cromite/cromite_prepopulated_engines.json
+@@ -33,6 +33,32 @@
+             "type": "SEARCH_ENGINE_GOOGLE_EN",
+             "id": 13
++        },
++
++        "ao3": {
++            "name": "AO3 Search",
++            "keyword": "ao3",
++            "favicon_url": "https://archiveofourown.org/favicon.ico",
++            "search_url": "https://archiveofourown.org/works/search?work_search[query]={searchTerms}",
++            "suggest_url": "https://archiveofourown.org/autocomplete?term={searchTerms}&type=tag",
++            "new_tab_url": "https://archiveofourown.org/",
++            "type": "SEARCH_ENGINE_AO3",
++            "id": 14
+         }
+     }
+ }
+diff --git a/components/search_engines/search_engine_type.h b/components/search_engines/search_engine_type.h
+--- a/components/search_engines/search_engine_type.h
++++ b/components/search_engines/search_engine_type.h
+@@ -99,11 +99,14 @@ enum SearchEngineType {
+   SEARCH_ENGINE_KAGI = 79,
+   SEARCH_ENGINE_STARTER_PACK_AI_MODE = 80,
+   SEARCH_ENGINE_YAHOO_JP = 81,
+   SEARCH_ENGINE_GOOGLE_EN = 82,
+   SEARCH_ENGINE_DUCKDUCKGOLIGHT = 83,
++  SEARCH_ENGINE_AO3 = 84,
+ 
+   SEARCH_ENGINE_MAX  // Bounding value needed for UMA histogram macro.
+ };
+ 
+-static_assert(SEARCH_ENGINE_DUCKDUCKGOLIGHT == (SEARCH_ENGINE_MAX - 1),
++static_assert(SEARCH_ENGINE_AO3 == (SEARCH_ENGINE_MAX - 1),
+               "Please check this patch");
+diff --git a/components/search_engines/template_url_prepopulate_data.cc b/components/search_engines/template_url_prepopulate_data.cc
+--- a/components/search_engines/template_url_prepopulate_data.cc
++++ b/components/search_engines/template_url_prepopulate_data_data.cc
+@@ -190,17 +190,22 @@ std::vector<std::unique_ptr<TemplateURLData>> GetPrepopulatedEnginesChromium(
+ }
+ 
+ std::vector<std::unique_ptr<TemplateURLData>> GetPrepopulatedEngines(
+     PrefService& prefs,
+     const std::vector<const PrepopulatedEngine*>&
+         regional_prepopulated_engines) {
+   std::vector<std::unique_ptr<TemplateURLData>> t_urls =
+     GetPrepopulatedEnginesChromium(prefs, regional_prepopulated_engines);
+   t_urls.push_back(TemplateURLDataFromPrepopulatedEngine(googleen));
+   t_urls.push_back(TemplateURLDataFromPrepopulatedEngine(duckduckgo_light));
++  // AO3 Browser: add AO3 as the first (default) engine
++  t_urls.insert(t_urls.begin(),
++                TemplateURLDataFromPrepopulatedEngine(ao3));
+   return t_urls;
+ }
+ 
+ std::unique_ptr<TemplateURLData> GetPrepopulatedEngine(
+     PrefService& prefs,
+     const std::vector<const PrepopulatedEngine*>& regional_prepopulated_engines,
+-- 

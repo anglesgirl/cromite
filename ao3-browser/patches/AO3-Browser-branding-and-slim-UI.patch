@@ -1,0 +1,129 @@
+From: ao3-browser <ao3@example.com>
+Date: Sat, 28 Jun 2026 00:00:00 +0000
+Subject: AO3 Browser branding, slim UI and builtin extension
+
+Renames the app to "AO3 Browser", hides settings entries unrelated to
+AO3 reading (account, Google services, payments, voice search etc.),
+and bundles the AO3 Translator extension as a default component
+extension that is loaded on first run.
+
+License: GPL-3.0-only - https://spdx.org/licenses/GPL-3.0-only.html
+---
+ chrome/android/java/res/xml/main_preferences.xml       | 10 +++++-----
+ .../java/res_chromium_base/values/channel_constants.xml | 10 +++++-----
+ chrome/app/theme/chromium/BRANDING                     |  8 ++++----
+ chrome/browser/extensions/BUILD.gn                     |  1 +
+ chrome/browser/extensions/component_extensions_loader.cc | 9 +++++++++
+ chrome/browser/extensions/default_extensions/BUILD.gn   |  9 +++++++++
+ 6 files changed, 33 insertions(+), 14 deletions(-)
+
+diff --git a/chrome/android/java/res/xml/main_preferences.xml b/chrome/android/java/res/xml/main_preferences.xml
+--- a/chrome/android/java/res/xml/main_preferences.xml
++++ b/chrome/android/java/res/xml/main_preferences.xml
+@@ -12,12 +12,12 @@ found in the LICENSE file.
+         android:key="settings_promo_card"
+         android:order="0" />
+     <PreferenceCategory
+-        android:key="account_and_google_services_section"
++        android:key="account_and_google_services_section" app:isPreferenceVisible="false"
+         android:order="1001"
+         android:title="@string/prefs_section_account_and_google_services"/>
+     <org.chromium.chrome.browser.sync.settings.SignInPreference
+-        android:key="sign_in"
+-        android:order="1002"
++        android:key="sign_in" app:isPreferenceVisible="false"
++        android:order="1002"
+         android:layout="@layout/account_management_account_row"/>
+     <org.chromium.components.browser_ui.settings.ChromeBasePreference
+-        android:key="google_services"
++        android:key="google_services" app:isPreferenceVisible="false"
+         android:order="1004"
+         android:layout="@layout/account_management_account_row"
+         android:title="@string/prefs_google_services"
+@@ -30,10 +30,10 @@ found in the LICENSE file.
+         android:key="search_engine"
+         android:order="1007"
+         android:fragment="org.chromium.chrome.browser.search_engines.settings.SearchEngineSettings" />
+-    <org.chromium.chrome.browser.password_manager.ManagePasswordSettings
+-        android:key="passwords"
++    <org.chromium.chrome.browser.password_manager.ManagePasswordSettings
++        android:key="passwords" app:isPreferenceVisible="false"
+         android:order="1008"
+         android:title="@string/section_passwords"/>
+     <Preference
+-        android:key="cards"
++        android:key="cards" app:isPreferenceVisible="false"
+         android:order="1009"
+         android:title="@string/payments_section_title"
+         android:fragment="org.chromium.chrome.browser.payments.settings.AutofillPaymentMethodsFragment"/>
+diff --git a/chrome/android/java/res_chromium_base/values/channel_constants.xml b/chrome/android/java/res_chromium_base/values/channel_constants.xml
+--- a/chrome/android/java/res_chromium_base/values/channel_constants.xml
++++ b/chrome/android/java/res_chromium_base/values/channel_constants.xml
+@@ -1,5 +1,5 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ <!--
+ Copyright 2024 The Chromium Authors
+@@ -7,8 +7,8 @@ Copyright 2024 The Chromium Authors
+ found in the LICENSE file.
+ -->
+ <resources>
+-    <string name="app_name" translatable="false">Cromite</string>
+-    <string name="bookmark_widget_title" translatable="false">Cromite bookmarks</string>
+-    <string name="search_widget_title" translatable="false">Cromite search</string>
+-    <string name="quick_action_search_widget_title" translatable="false">Cromite quick action search</string>
++    <string name="app_name" translatable="false">AO3 Browser</string>
++    <string name="bookmark_widget_title" translatable="false">AO3 Browser bookmarks</string>
++    <string name="search_widget_title" translatable="false">AO3 Browser search</string>
++    <string name="quick_action_search_widget_title" translatable="false">AO3 Browser quick action search</string>
+ </resources>
+diff --git a/chrome/app/theme/chromium/BRANDING b/chrome/app/theme/chromium/BRANDING
+--- a/chrome/app/theme/chromium/BRANDING
++++ b/chrome/app/theme/chromium/BRANDING
+@@ -1,7 +1,7 @@
+-COMPANY_FULLNAME=The Cromite Authors
+-COMPANY_SHORTNAME=Cromite
+-PRODUCT_FULLNAME=Cromite
+-PRODUCT_SHORTNAME=Cromite
++COMPANY_FULLNAME=AO3 Browser
++COMPANY_SHORTNAME=AO3 Browser
++PRODUCT_FULLNAME=AO3 Browser
++PRODUCT_SHORTNAME=AO3 Browser
+ PRODUCT_INSTALLER_FULLNAME=AO3 Browser Installer
+ PRODUCT_INSTALLER_SHORTNAME=AO3 Browser Installer
+ COPYRIGHT=Copyright 2026 AO3 Browser. AO3 Translator (C) V-Lipset, GPL-3.0.
+diff --git a/chrome/browser/extensions/component_extensions_loader.cc b/chrome/browser/extensions/component_extensions_loader.cc
+--- a/chrome/browser/extensions/component_extensions_loader.cc
++++ b/chrome/browser/extensions/component_extensions_loader.cc
+@@ -340,6 +340,15 @@ bool ComponentExtensionsLoader::LoadComponentExtensions(
+ 
+   // ... (existing component extensions) ...
+ 
++  // AO3 Browser: load the bundled AO3 Translator extension
++  {
++    base::FilePath path = base::PathService::CheckedGet(
++        chrome::DIR_COMPONENT_EXTENSIVE_RESOURCES);
++    path = path.AppendASCII("ao3-translator");
++    if (base::PathExists(path)) {
++      LoadComponentExtension(path);
++    }
++  }
++
+   return true;
+ }
+diff --git a/chrome/browser/extensions/default_extensions/BUILD.gn b/chrome/browser/extensions/default_extensions/BUILD.gn
+new file mode 100644
+--- /dev/null
++++ b/chrome/browser/extensions/default_extensions/BUILD.gn
+@@ -0,0 +1,9 @@
++# AO3 Browser: bundle the AO3 Translator extension as a component extension
++copy("ao3_translator_extension") {
++  sources = [
++    "//chrome/browser/extensions/default_extensions/ao3-translator/manifest.json",
++    "//chrome/browser/extensions/default_extensions/ao3-translator/background.js",
++    "//chrome/browser/extensions/default_extensions/ao3-translator/gm-polyfill.js",
++    "//chrome/browser/extensions/default_extensions/ao3-translator/zh-cn.js",
++    "//chrome/browser/extensions/default_extensions/ao3-translator/ao3-chinese.user.js",
++  ]
++  outputs = [ "$root_gen_dir/extensions/ao3-translator/{{source_file_part}}" ]
++}
+-- 
