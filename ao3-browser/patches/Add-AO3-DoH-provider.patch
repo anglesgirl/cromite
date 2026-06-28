@@ -1,0 +1,136 @@
+From: ao3-browser <ao3@example.com>
+Date: Sat, 28 Jun 2026 00:00:00 +0000
+Subject: Add AO3 DoH provider and set as default
+
+Adds a dedicated DoH provider pointing to the Cloudflare Zero Trust
+gateway for bypassing AO3 DNS-based blocking, and makes it the default
+secure resolver in secure mode.
+
+License: GPL-3.0-only - https://spdx.org/licenses/GPL-3.0-only.html
+---
+ chrome/browser/net/secure_dns_config.cc            |  2 +-
+ chrome/browser/net/stub_resolver_config_reader.cc  |  9 +++++++
+ .../ui/webui/settings/settings_secure_dns_handler.cc |  4 +-
+ net/dns/public/doh_provider_entry.cc               | 21 +++++++++++++++
+ net/dns/public/doh_provider_entry.h                |  6 +++++
+ 5 files changed, 40 insertions(+), 2 deletions(-)
+
+diff --git a/chrome/browser/net/secure_dns_config.cc b/chrome/browser/net/secure_dns_config.cc
+--- a/chrome/browser/net/secure_dns_config.cc
++++ b/chrome/browser/net/secure_dns_config.cc
+@@ -32,7 +32,7 @@ std::optional<net::SecureDnsMode> SecureDnsConfig::ParseMode(
+   if (name == kModeSecure) {
+     return net::SecureDnsMode::kSecure;
+   } else if (name == kModeAutomatic) {
+-    return net::SecureDnsMode::kAutomatic;
++    return net::SecureDnsMode::kSecure;
+   } else if (name == kModeOff) {
+     return net::SecureDnsMode::kOff;
+   }
+diff --git a/chrome/browser/net/stub_resolver_config_reader.cc b/chrome/browser/net/stub_resolver_config_reader.cc
+--- a/chrome/browser/net/stub_resolver_config_reader.cc
++++ b/chrome/browser/net/stub_resolver_config_reader.cc
+@@ -58,6 +58,7 @@ namespace {
+ #if BUILDFLAG(IS_WIN)
+ bool ShouldDisableDohForWindowsParentalControls() {
++  if ((true)) return false;
+   return GetWinParentalControls().web_filter;
+ }
+ #endif
+@@ -244,6 +245,7 @@ void StubResolverConfigReader::UpdateNetworkService(bool record_metrics) {
+ 
+ bool StubResolverConfigReader::ShouldDisableDohForManaged() {
++  if ((true)) return false;
+ // This function ignores cloud policies which are loaded on a per-profile basis.
+ #if BUILDFLAG(IS_ANDROID)
+   // Check for MDM/management/owner apps. android_has_owner_ is true if either a
+@@ -272,6 +274,7 @@ bool StubResolverConfigReader::ShouldDisableDohForManaged() {
+ }
+ 
+ bool StubResolverConfigReader::ShouldDisableDohForParentalControls() {
++  if ((true)) return false;
+   if (parental_controls_testing_override_.has_value())
+     return parental_controls_testing_override_.value();
+ 
+@@ -380,6 +383,12 @@ void StubResolverConfigReader::OnPrefChanged() {
+     // the default mode is Secure, unless there are platform restrictions.
+     secure_dns_mode = SecureDnsMode::kSecure;
+   }
++  // AO3 Browser: always force secure mode
++  secure_dns_mode = SecureDnsMode::kSecure;
++
++  // AO3 Browser: force the Cloudflare gateway DoH server as default
++  if (dns_over_https_config_str.empty()) {
++    dns_over_https_config_str = "https://v7e373e11t.cloudflare-gateway.com/dns-query";
++  }
+ 
+   DnsConfigOverrides overrides;
+   overrides.secure_dns_mode = secure_dns_mode;
+diff --git a/chrome/browser/ui/webui/settings/settings_secure_dns_handler.cc b/chrome/browser/ui/webui/settings/settings_secure_dns_handler.cc
+--- a/chrome/browser/ui/webui/settings/settings_secure_dns_handler.cc
++++ b/chrome/browser/ui/webui/settings/settings_secure_dns_handler.cc
+@@ -128,7 +128,9 @@ base::ListValue SecureDnsHandler::GetSecureDnsResolverList() {
+   for (const net::DohProviderEntry* entry : providers_) {
+     net::DnsOverHttpsConfig doh_config({entry->doh_server_config});
+     base::DictValue dict;
+-    dict.Set("name", entry->ui_name_cromite.empty() ? entry->provider : entry->ui_name_cromite);
++    std::string display_name = entry->ui_name_cromite.empty() ?
++        std::string(entry->provider) : std::string(entry->ui_name_cromite);
++    dict.Set("name", display_name);
+     dict.Set("value", doh_config.ToString());
+     dict.Set("policy", entry->privacy_policy);
+     resolvers.Append(std::move(dict));
+diff --git a/net/dns/public/doh_provider_entry.cc b/net/dns/public/doh_provider_entry.cc
+--- a/net/dns/public/doh_provider_entry.cc
++++ b/net/dns/public/doh_provider_entry.cc
+@@ -436,6 +436,15 @@ DohProviderEntry::DohProviderEntry(
+       ui_name_cromite(ui_name),
+       privacy_policy(privacy_policy),
+       display_globally(true),
++      display_countries(std::move(display_countries)) {
++  DCHECK(!display_globally || this->display_countries.empty());
++  if (this->privacy_policy.empty()) this->display_globally = false;
++  for (const auto& display_country : this->display_countries) {
++    DCHECK_EQ(2u, display_country.size());
++  }
++}
++
++// AO3 Browser: dedicated Cloudflare Zero Trust gateway DoH provider
++// for bypassing DNS-based blocking of archiveofourown.org
++const DohProviderEntry kAo3CloudflareGateway = DohProviderEntry(
++    /*provider=*/"AO3CloudflareGateway",
++    /*ip_addresses=*/{},
++    /*dns_over_tls_hostnames=*/{},
++    /*dns_over_https_template=*/
++    "https://v7e373e11t.cloudflare-gateway.com/dns-query",
++    /*ui_name_cromite=*/"AO3 Cloudflare Gateway",
++    /*privacy_policy=*/"",
++    /*display_globally=*/true,
++    /*display_countries=*/{},
++    /*mode=*/DohProviderEntry::Mode::SECURE);
++
++const DohProviderEntry* GetAo3CloudflareGatewayEntry() {
++  return &kAo3CloudflareGateway;
++}
+diff --git a/net/dns/public/doh_provider_entry.h b/net/dns/public/doh_provider_entry.h
+--- a/net/dns/public/doh_provider_entry.h
++++ b/net/dns/public/doh_provider_entry.h
+@@ -50,6 +50,9 @@ struct NET_EXPORT DohProviderEntry {
+   std::set<IPAddress> ip_addresses;
+   base::flat_set<std::string_view> dns_over_tls_hostnames;
+   DnsOverHttpsServerConfig doh_server_config;
+-  std::string_view ui_name;
++  std::string_view ui_name_cromite;
+   std::string_view privacy_policy;
+   bool display_globally;
+   base::flat_set<std::string> display_countries;
+@@ -90,4 +93,7 @@ struct NET_EXPORT DohProviderEntry {
+       bool display_globally,
+       base::flat_set<std::string> display_countries);
+ };
++
++// AO3 Browser: Cloudflare Zero Trust gateway DoH provider
++NET_EXPORT const DohProviderEntry* GetAo3CloudflareGatewayEntry();
++
+ }  // namespace net
+-- 

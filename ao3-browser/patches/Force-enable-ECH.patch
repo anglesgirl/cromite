@@ -1,0 +1,61 @@
+From: ao3-browser <ao3@example.com>
+Date: Sat, 28 Jun 2026 00:00:00 +0000
+Subject: Force enable Encrypted ClientHello (ECH)
+
+ECH encrypts the SNI and other sensitive ClientHello fields, preventing
+DPI-based censorship from identifying AO3 connections. This patch forces
+the kEncryptedClientHellos feature on by default and ensures ech_enabled
+is always true in the SSL client context config.
+
+License: GPL-3.0-only - https://spdx.org/licenses/GPL-3.0-only.html
+---
+ chrome/browser/net/secure_dns_client.cc  |  4 ++++
+ cromite_flags/net/base/features_cc/Force-enable-ECH.inc | 3 +++
+ cromite_flags/net/base/features_h/Force-enable-ECH.inc | 1 +
+ net/ssl/ssl_config_service.cc             |  2 ++
+ 4 files changed, 10 insertions(+)
+ create mode 100644 cromite_flags/net/base/features_cc/Force-enable-ECH.inc
+ create mode 100644 cromite_flags/net/base/features_h/Force-enable-ECH.inc
+
+diff --git a/cromite_flags/net/base/features_cc/Force-enable-ECH.inc b/cromite_flags/net/base/features_cc/Force-enable-ECH.inc
+new file mode 100644
+--- /dev/null
++++ b/cromite_flags/net/base/features_cc/Force-enable-ECH.inc
+@@ -0,0 +1,3 @@
++// AO3 Browser: force-enable ECH to bypass SNI-based censorship
++SET_CROMITE_FEATURE_ENABLED(kEncryptedClientHellos);
++
+diff --git a/cromite_flags/net/base/features_h/Force-enable-ECH.inc b/cromite_flags/net/base/features_h/Force-enable-ECH.inc
+new file mode 100644
+--- /dev/null
++++ b/cromite_flags/net/base/features_h/Force-enable-ECH.inc
+@@ -0,0 +1 @@
++// kEncryptedClientHellos already declared in upstream features.h
+diff --git a/chrome/browser/net/secure_dns_client.cc b/chrome/browser/net/secure_dns_client.cc
+--- a/chrome/browser/net/secure_dns_client.cc
++++ b/chrome/browser/net/secure_dns_client.cc
+@@ -120,6 +120,10 @@ SecureDnsClient::GetHttpsRecordResolutionResultForRequestContext() {
+ 
+ net::SSLContextConfig SecureDnsClient::UpdateSSLConfigWithDohProbes(
+     const net::SSLContextConfig& config) {
++  // AO3 Browser: always enable ECH regardless of DoH probe results,
++  // since we force a known-good Cloudflare gateway DoH server.
++  net::SSLContextConfig ao3_config = config;
++  ao3_config.ech_enabled = true;
++  return ao3_config;
+   if (!probes_runner_) {
+     return config;
+   }
+diff --git a/net/ssl/ssl_config_service.cc b/net/ssl/ssl_config_service.cc
+--- a/net/ssl/ssl_config_service.cc
++++ b/net/ssl/ssl_config_service.cc
+@@ -45,6 +45,8 @@ void SSLConfigService::SetSSLContextConfig(const SSLContextConfig& config) {
+ 
+ // static
+ SSLContextConfig SSLConfigService::GetDefaultSSLContextConfig() {
++  // AO3 Browser: force-enable ECH by default
++  GetMutableSSLContextConfig().ech_enabled = true;
+   return *g_ssl_context_config.Get();
+ }
+ 
+-- 
